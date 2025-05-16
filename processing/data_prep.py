@@ -483,23 +483,16 @@ def load_cached_image(path):
         print(f"Error loading image {path}: {e}")
         return None
 
-def create_dataset(df, only_images=False, validation_split=0.15, num_proc=None):
-    # Set default num_proc to 75% of available CPUs
+def create_dataset(df, validation_split=0.15, num_proc=None):
     if num_proc is None:
         num_proc = max(1, int(cpu_count() * 0.75))
     
-    # Filter media files with progress
-    media_pattern = '.png|.jpg|.jpeg|.gif|.bmp' if only_images else '.png|.jpg|.jpeg|.gif|.bmp|.mp4'
-    print("Filtering media files...")
-    df = df[df['media_path'].str.contains(media_pattern, na=False, regex=True)]
-    
-    print("Processing text responses...")
+ 
     df.loc[df['current_profession'] == 'Other (please specify):', 'current_profession'] = df['current_profession_text']
     df.loc[df['marital_status'] == 'Other (please specify):', 'marital_status'] = df['marital_status_text']
     df.loc[df['family_status'] == 'Other (please specify):', 'family_status'] = df['family_status_text']
 
-    # Get and split unique media
-    print("Splitting dataset...")
+    print("Splitting dataset")
     unique_media = df['media_path'].dropna().unique()
     num_val_media = max(1, int(len(unique_media) * validation_split))
     np.random.shuffle(unique_media)
@@ -507,7 +500,6 @@ def create_dataset(df, only_images=False, validation_split=0.15, num_proc=None):
     
     train_media_set = set(unique_media[num_val_media:])
     
-    # Initialize lists
     train_messages, train_media = [], []
     val_messages, val_media = [], []
     
@@ -528,12 +520,8 @@ def create_dataset(df, only_images=False, validation_split=0.15, num_proc=None):
 
             if media_path and isinstance(media_path, str):
                 if media_path.lower().endswith((".png", ".jpg", ".jpeg", ".gif", ".bmp")):
-                    # img = load_cached_image(media_path)
-                    # if img:
                     user_content.append({"type": "image", "image": media_path})
-                elif media_path.lower().endswith(".mp4"):
-                    user_content.append({"type": "video_path", "video_path": media_path})
-
+               
             user_content.append({"type": "text", "text": str(prompt)})
             messages = [
                 {"role": "user", "content": user_content},
@@ -574,13 +562,8 @@ def create_dataset(df, only_images=False, validation_split=0.15):
     val_messages = []
     val_media = []
     
-    if only_images:
-        # Include both images and videos if only_images is False, otherwise just images
-        df = df[df['media_path'].str.contains('.png|.jpg|.jpeg|.gif|.bmp', na=False)]
-    else:
-        # Include both images and videos
-        df = df[df['media_path'].str.contains('.png|.jpg|.jpeg|.gif|.bmp|.mp4', na=False)]
-   
+    df = df[df['media_path'].str.contains('.png|.jpg|.jpeg|.gif|.bmp', na=False)]
+    
     # Replacing "Other (please specify):" with the actual text provided
     df.loc[df['current_profession'] == 'Other (please specify):', 'current_profession'] = df['current_profession_text']
     df.loc[df['marital_status'] == 'Other (please specify):', 'marital_status'] = df['marital_status_text']
@@ -665,154 +648,7 @@ def create_dataset(df, only_images=False, validation_split=0.15):
     return train_dataset, val_dataset
 
 
-def create_dataset(df, only_images=False, validation_split=0.10, demographic_columns=None, holdout_per_demo=10):
-    messages_list = []  
-    train_messages = []
-    train_media = []
-    val_messages = []
-    val_media = []
-    
-    if only_images:
-        df = df[df['media_path'].str.contains('.png|.jpg|.jpeg|.gif|.bmp', na=False, regex=True)]
-    else:
-        df = df[df['media_path'].str.contains('.png|.jpg|.jpeg|.gif|.bmp|.mp4', na=False, regex=True)]
-   
-    # Get all unique media stimuli
-    unique_media = df['media_path'].dropna().unique()
-    num_val_media = max(1, int(len(unique_media) * validation_split))
-    
-    # Split media into train and validation sets
-    np.random.shuffle(unique_media)
-    val_media_set = set(unique_media[:num_val_media])
-    train_media_set = set(unique_media[num_val_media:])
-    print(val_media_set)
-    # First get unique respondents
-    respondent_ids = df['ResponseId'].unique()
-    
-    if demographic_columns:
-        respondents_df = df.drop_duplicates('ResponseId')[['ResponseId'] + demographic_columns]
-        
-        total_respondents = len(respondents_df)
-        target_val_respondents = int(total_respondents * validation_split)
-        
-        demo_groups = respondents_df.groupby(demographic_columns).ngroups
-        adjusted_holdout = max(1, int(target_val_respondents / demo_groups))
-        
-        val_respondents = set()
-        for _, group in respondents_df.groupby(demographic_columns):
-            group_size = len(group)
-            group_holdout = min(adjusted_holdout, max(1, int(group_size * validation_split)))
-            
-            if group_size > group_holdout:
-                val_sample = group.sample(n=group_holdout, random_state=42)
-                val_respondents.update(val_sample['ResponseId'].tolist())
-            else:
-                val_respondents.update(group['ResponseId'].tolist())
-    else:
-        # If no demographics specified, do random split
-        num_val_respondents = int(len(respondent_ids) * validation_split)
-        val_respondents = set(np.random.choice(respondent_ids, size=num_val_respondents, replace=False))
-    
-    
-    
-    if demographic_columns:
-        demo_tracker = df[['ResponseId'] + demographic_columns].drop_duplicates()
-        demo_tracker['in_validation'] = demo_tracker['ResponseId'].isin(val_respondents)
-        
-        print("\nDemographic Distribution in Validation Set:")
-        for demo_col in demographic_columns:
-            print(f"\n{demo_col}:")
-            val_demo_counts = demo_tracker[demo_tracker['in_validation']][demo_col].value_counts()
-            train_demo_counts = demo_tracker[~demo_tracker['in_validation']][demo_col].value_counts()
-            
-            counts_df = pd.DataFrame({
-                'Training': train_demo_counts,
-                'Validation': val_demo_counts
-            }).fillna(0)
-            
-            counts_df['% Validation'] = (counts_df['Validation'] / 
-                                       (counts_df['Training'] + counts_df['Validation'])) * 100
-            print(counts_df.sort_values('Validation', ascending=False))
-            
-    grouped = df.groupby(['ResponseId', 'topic'])
-    
-    for name, group in grouped:
-        response_id, topic = name
-        in_val_respondent = response_id in val_respondents
-        
-        topic_responses_dict = {
-            row['question']: row['response'] for _, row in group.iterrows()
-        }
-
-        for _, current_row in group.iterrows():
-            prompt = create_prompt(current_row, topic_responses_dict)
-            if prompt is None:
-                continue
-                
-            answer = str(current_row['response'])
-            media_path = current_row.get('media_path', None)
-            in_val_media = media_path in val_media_set if media_path else False
-
-            user_content = []
-            
-            if media_path and isinstance(media_path, str): 
-                try:
-                    if media_path.lower().endswith((".png", ".jpg", ".jpeg", ".gif", ".bmp")):
-                        user_content.append({"type": "image", "image": media_path})  
-                    elif media_path.lower().endswith(".mp4"):
-                        user_content.append({"type": "video_path", "video_path": media_path})
-                except (FileNotFoundError, Exception) as e:
-                    continue
-
-            user_content.append({"type": "text", "text": str(prompt)})
-
-            messages = [
-                {"role": "user", "content": user_content},
-                {"role": "assistant", "content": [{"type": "text", "text": answer}]}
-            ]
-            
-            # Prioritize respondent-based split over media-based split
-            if in_val_respondent:
-                val_messages.append(messages)
-                val_media.append(media_path if media_path else "")
-            elif in_val_media:
-                # Only add to validation if not already added by respondent split
-                # AND if we haven't exceeded our validation size target
-                current_val_ratio = len(val_messages) / (len(train_messages) + len(val_messages) + 1)
-                if current_val_ratio < validation_split * 1.1:  # Allow 10% overshoot
-                    val_messages.append(messages)
-                    val_media.append(media_path if media_path else "")
-                else:
-                    train_messages.append(messages)
-                    train_media.append(media_path if media_path else "")
-            else:
-                train_messages.append(messages)
-                train_media.append(media_path if media_path else "")
-    
-    # Calculate final ratios
-    total_samples = len(train_messages) + len(val_messages)
-    actual_val_ratio = len(val_messages) / total_samples
-    
-    print(f"\nDataset prepared with {len(train_messages)} training samples and {len(val_messages)} validation samples.")
-    print(f"Validation ratio: {actual_val_ratio:.1%} (target was {validation_split:.1%})")
-    print(f"Unique media in training: {len(train_media_set)}, in validation: {len(val_media_set)}")
-    
-    train_dataset = Dataset.from_dict({
-        "conversations": train_messages,
-        "images": train_media,
-    })
-    
-    val_dataset = Dataset.from_dict({
-        "conversations": val_messages,
-        "images": val_media,
-    })
-    
-    return train_dataset, val_dataset
-
-
-def create_dataset_with_topic_based_holdout(df, demographic_columns, only_images=True):
-    if only_images:
-        df = df[df['media_path'].str.contains('.png|.jpg|.jpeg|.gif|.bmp', na=False, regex=True)]
+def create_dataset_with_topic_based_holdout(df, demographic_columns):
 
     topics = df['topic'].unique()
     heldout_pairs = []
@@ -851,8 +687,6 @@ def create_dataset_with_topic_based_holdout(df, demographic_columns, only_images
                 if media_path:
                     if media_path.lower().endswith((".png", ".jpg", ".jpeg", ".gif", ".bmp")):
                         user_content.append({"type": "image", "image": media_path})
-                    elif media_path.lower().endswith(".mp4"):
-                        user_content.append({"type": "video_path", "video_path": media_path})
                 user_content.append({"type": "text", "text": prompt})
                 messages.append([
                     {"role": "user", "content": user_content},
@@ -944,7 +778,7 @@ def main():
 
     data = consolidate_categories(data)
   
-    # train_dataset, val_dataset = create_dataset(data, only_images=True, validation_split=0.10, demographic_columns=demographic_cols)
+    # train_dataset, val_dataset = create_dataset(data, validation_split=0.10, demographic_columns=demographic_cols)
     train_dataset, val_dataset = create_dataset_with_topic_based_holdout(data, demographic_cols, only_images=True)
   
     train_dataset = train_dataset.shuffle()
@@ -964,7 +798,5 @@ if __name__ == "__main__":
     
     train_dataset.save_to_disk(train_save_path)
     val_dataset.save_to_disk(val_save_path)
-    # train_dataset.to_csv(train_save_path + '.csv')
-    # val_dataset.to_csv(val_save_path + '.csv')
-  
+
   
