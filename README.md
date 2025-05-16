@@ -1,3 +1,7 @@
 # PHORECAST
 
-![Project Screenshot](pipeline.pdf)
+![Project Screenshot]()
+
+<p align="center">
+  <img src="teaser.png" width="" height="">
+</p>
