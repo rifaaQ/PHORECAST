@@ -1,6 +1,6 @@
 # PHORECAST - Public Health Outreach REceptivity and CAmpaign Signal Tracking
 
-![Project Screenshot]()
+<!-- ![Project Screenshot]() -->
 
 <p align="center">
   <img src="teaser.png" width="" height="">
