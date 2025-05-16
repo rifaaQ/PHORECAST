@@ -16,7 +16,7 @@ The processed dataset can be found at huggingface.co/datasets/tomg-group-umd/PHO
 We consider there to be three phases to the codebase for this project: 
 1. Data Processing: We provide the methods used to create our training/validation set in `./processing`:
     - The data procsesing step is the most intricate process, since there are many choices to be made here (feature randomization, training on all features or only some, defining the validation split as either a set \% or a more stratified sampling method using the demogrphic groups.) 
-    = Please run `python data_prep.py` to prepare the training/validation splits, as used in the paper (feature randomization and hold out strategy). Feel free to experiment with the randomization of features and what we use for training.   
+    = Please run `python data_prep.py` to prepare the training/validation splits, as used in the paper (feature randomization and hold out strategy across gender, religion and race). Feel free to experiment with the randomization of features and what we use for training or validation.
 
 2. Training scripts are found under `./training_scripts`
     - We use Unsloth for training. Our script supports Pixtral, Gemma, Llama, Llava, and Qwen. If you want to start training, run the following command: ```./train.sh gemma {path_to_dataset} {path_to_output}```
